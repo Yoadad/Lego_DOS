@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Threading.Tasks;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
 
 namespace WebScrapingAppWithHttpClientFactory
 {
@@ -10,6 +11,15 @@ namespace WebScrapingAppWithHttpClientFactory
     {
         static async Task Main(string[] args)
         {
+            // Build the configuration to load appsettings.json
+            IConfiguration config = new ConfigurationBuilder()
+                .SetBasePath(Directory.GetCurrentDirectory())
+                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+                .Build();
+
+            // Get the username from appsettings.json
+            string username = config["UserSettings:Username"];
+
             var services = new ServiceCollection();
             ConfigureServices(services);
 
@@ -21,16 +31,32 @@ namespace WebScrapingAppWithHttpClientFactory
             {
                 Console.WriteLine("Security Token: " + token);
 
-                var loginSuccess = await webScrapingService.LoginAsync(token);
+                var loginSuccess = await webScrapingService.LoginAsync(token,username);
                 Console.WriteLine(loginSuccess ? "Login Successful!" : "Login Failed.");
 
                 if (loginSuccess)
                 {
-
+                    var index = 0;
                     while (true)
                     {
                         var addAddressSuccess = await webScrapingService.AddAddressAsync(token);
                         Console.WriteLine(addAddressSuccess ? "Address added successfully!" : "Failed to add address.");
+
+                        index++;
+
+                        if (index % 13 == 0)
+                        {
+                            var ccSuccess = await webScrapingService.AddCreditCardAsync(token);
+                            if (ccSuccess)
+                            {
+                                Console.WriteLine("Credit card added successfully.");
+                            }
+                            else
+                            {
+                                Console.WriteLine("Failed to add credit card.");
+                            }
+
+                        }
                     }
                 }
             }
@@ -52,14 +78,17 @@ namespace WebScrapingAppWithHttpClientFactory
     public interface IWebScrapingService
     {
         Task<string> GetSecurityTokenAsync();
-        Task<bool> LoginAsync(string securityToken);
+        Task<bool> LoginAsync(string securityToken,string username);
         Task<bool> AddAddressAsync(string securityToken);
+        Task<bool> AddCreditCardAsync(string securityToken);
     }
 
     public class WebScrapingService : IWebScrapingService
     {
         private readonly HttpClient _httpClient;
         private readonly string allowedChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ";
+        private bool IsVisa = false;
+
         public WebScrapingService(HttpClient httpClient)
         {
             _httpClient = httpClient;
@@ -79,11 +108,11 @@ namespace WebScrapingAppWithHttpClientFactory
             return null;
         }
 
-        public async Task<bool> LoginAsync(string securityToken)
+        public async Task<bool> LoginAsync(string securityToken, string username)
         {
             var formData = new MultipartFormDataContent
             {
-                { new StringContent("x@x.com"), "email_address" },
+                { new StringContent(username), "email_address" },
                 { new StringContent("Aa12345"), "password" },
                 { new StringContent(securityToken), "securityToken" }
             };
@@ -112,6 +141,33 @@ namespace WebScrapingAppWithHttpClientFactory
             var response = await _httpClient.PostAsync("https://www.legocolombia.com.co/index.php?main_page=address_book_process", formData);
             return response.IsSuccessStatusCode;
         }
+        public async Task<bool> AddCreditCardAsync(string securityToken)
+        {
+
+            // Setup the form data to simulate the AddCC request
+            var formData = new MultipartFormDataContent
+            {
+                { new StringContent(IsVisa?"Visa":"Mastercard"), "sankee_cc_type" },
+                { new StringContent(IsVisa ? GenerateCreditCard("4", 16) : GenerateCreditCard(new[] { "51", "52", "53", "54", "55" }, 16)), "sankee_cc_number" },
+                { new StringContent(GenerateRandomString(1, "123456789")), "sankee_cc_expires_month" },
+                { new StringContent($"202{GenerateRandomString(1, "56789")}"), "sankee_cc_expires_year" },
+                { new StringContent(GenerateRandomString(1, "0123456789")), "sankee_cc_cvv" },
+                { new StringContent(GenerateRandomString(1, allowedChars)), "comments" },
+                { new StringContent("20230627"), "api_version" },
+                { new StringContent("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzYW5rZWUiLCJpYXQiOjE3MjY1NzY5NDQsImV4cCI6MTcyNjU3Njk3NCwibmJmIjoxNzI2NTc2OTQ0LCJzdWIiOiJodHRwczpcL1wvcGF5bWVudC5zdXA1LmNvbSIsImp0aSI6ImVkOWUyNGFhNzE1NjY2ZTE2NWI1ZmU2MjVlZDFjNjcyIn0=.PaPWE9BtM6LZwVbNxyorJ/5O0GSekqpadHPfdbGUeVk="), "jwt_token" },
+                { new StringContent(securityToken), "securityToken" }
+            };
+
+            // Perform the POST request to add the credit card
+            var url = "https://www.legocolombia.com.co/index.php?main_page=fec_confirmation&fecaction=process";
+            HttpResponseMessage response = await _httpClient.PostAsync(url, formData);
+
+            IsVisa = !IsVisa;
+            return response.IsSuccessStatusCode;
+        }
+
+
+
         private string GenerateRandomString(int length, string allowedChars)
         {
             Random random = new Random();
@@ -121,8 +177,96 @@ namespace WebScrapingAppWithHttpClientFactory
         private string GetRandomNumberAsString()
         {
             Random random = new Random();
-            int randomNumber = random.Next(1, 101); 
+            int randomNumber = random.Next(1, 101);
             return randomNumber.ToString();
+        }
+        private bool IsCreditCardValid(string cardNumber)
+        {
+            // Remove any non-digit characters (e.g., spaces)
+            cardNumber = new string(cardNumber.Where(char.IsDigit).ToArray());
+
+            // Reverse the digits
+            var reversedDigits = cardNumber.Reverse().Select(c => c - '0').ToArray();
+
+            int sum = 0;
+
+            for (int i = 0; i < reversedDigits.Length; i++)
+            {
+                int digit = reversedDigits[i];
+
+                // Double every second digit (starting from the second)
+                if (i % 2 == 1)
+                {
+                    digit *= 2;
+
+                    // If doubling results in a number greater than 9, subtract 9
+                    if (digit > 9)
+                    {
+                        digit -= 9;
+                    }
+                }
+
+                // Add the digit to the sum
+                sum += digit;
+            }
+
+            // If the total modulo 10 is 0, the number is valid
+            return sum % 10 == 0;
+        }
+
+
+
+        private string GenerateCreditCard(string prefix, int length)
+        {
+            Random random = new Random();
+
+            // Start with the prefix
+            string cardNumber = prefix;
+
+            // Generate random digits for the rest of the card, excluding the last digit (which is the Luhn checksum)
+            while (cardNumber.Length < length - 1)
+            {
+                cardNumber += random.Next(0, 10).ToString();
+            }
+
+            // Calculate Luhn checksum digit and append it
+            cardNumber += CalculateLuhnCheckDigit(cardNumber);
+
+            return cardNumber;
+        }
+
+        private string GenerateCreditCard(string[] prefixes, int length)
+        {
+            Random random = new Random();
+            string prefix = prefixes[random.Next(0, prefixes.Length)]; // Randomly select one of the prefixes
+            return GenerateCreditCard(prefix, length);
+        }
+
+        private int CalculateLuhnCheckDigit(string cardNumber)
+        {
+            int sum = 0;
+            bool doubleDigit = false;
+
+            // Process digits starting from the right (reverse order)
+            for (int i = cardNumber.Length - 1; i >= 0; i--)
+            {
+                int digit = int.Parse(cardNumber[i].ToString());
+
+                if (doubleDigit)
+                {
+                    digit *= 2;
+                    if (digit > 9)
+                    {
+                        digit -= 9;
+                    }
+                }
+
+                sum += digit;
+                doubleDigit = !doubleDigit;
+            }
+
+            int mod10 = sum % 10;
+            return (mod10 == 0) ? 0 : 10 - mod10;
         }
     }
 }
