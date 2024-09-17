@@ -59,7 +59,7 @@ namespace WebScrapingAppWithHttpClientFactory
     public class WebScrapingService : IWebScrapingService
     {
         private readonly HttpClient _httpClient;
-
+        private readonly string allowedChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ";
         public WebScrapingService(HttpClient httpClient)
         {
             _httpClient = httpClient;
@@ -83,7 +83,7 @@ namespace WebScrapingAppWithHttpClientFactory
         {
             var formData = new MultipartFormDataContent
             {
-                { new StringContent("a@b.com"), "email_address" },
+                { new StringContent("x@x.com"), "email_address" },
                 { new StringContent("Aa12345"), "password" },
                 { new StringContent(securityToken), "securityToken" }
             };
@@ -97,13 +97,13 @@ namespace WebScrapingAppWithHttpClientFactory
         {
             var formData = new MultipartFormDataContent
             {
-                { new StringContent("你有很多"), "firstname" },
-                { new StringContent("紧身女孩"), "lastname" },
-                { new StringContent($"The big wall {new String((char)new Random(13).Next(), 55)} "), "street_address" },
-                { new StringContent("Beigin"), "city" },
-                { new StringContent("12345"), "postcode" },
-                { new StringContent("44"), "zone_country_id" },
-                { new StringContent("Yes"), "primary" },
+                { new StringContent(GenerateRandomString(13, allowedChars)), "firstname" },
+                { new StringContent(GenerateRandomString(13, allowedChars)), "lastname" },
+                { new StringContent(GenerateRandomString(128, allowedChars)), "street_address" },
+                { new StringContent(GenerateRandomString(21, allowedChars)), "city" },
+                { new StringContent(GenerateRandomString(5, "0123456789")), "postcode" },
+                { new StringContent(GetRandomNumberAsString()), "zone_country_id" },
+                { new StringContent(GenerateRandomString(2, "onON")), "primary" },
                 { new StringContent("process"), "action" },
                 { new StringContent(securityToken), "securityToken" }
             };
@@ -111,6 +111,18 @@ namespace WebScrapingAppWithHttpClientFactory
             // Use absolute URI for adding address
             var response = await _httpClient.PostAsync("https://www.legocolombia.com.co/index.php?main_page=address_book_process", formData);
             return response.IsSuccessStatusCode;
+        }
+        private string GenerateRandomString(int length, string allowedChars)
+        {
+            Random random = new Random();
+            return new string(Enumerable.Repeat(allowedChars, length)
+                .Select(s => s[random.Next(s.Length)]).ToArray());
+        }
+        private string GetRandomNumberAsString()
+        {
+            Random random = new Random();
+            int randomNumber = random.Next(1, 101); 
+            return randomNumber.ToString();
         }
     }
 }
