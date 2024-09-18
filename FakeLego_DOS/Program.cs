@@ -31,7 +31,7 @@ namespace WebScrapingAppWithHttpClientFactory
             {
                 Console.WriteLine("Security Token: " + token);
 
-                var loginSuccess = await webScrapingService.LoginAsync(token,username);
+                var loginSuccess = await webScrapingService.LoginAsync(token, username);
                 Console.WriteLine(loginSuccess ? "Login Successful!" : "Login Failed.");
 
                 if (loginSuccess)
@@ -42,21 +42,12 @@ namespace WebScrapingAppWithHttpClientFactory
                         var addAddressSuccess = await webScrapingService.AddAddressAsync(token);
                         Console.WriteLine(addAddressSuccess ? "Address added successfully!" : "Failed to add address.");
 
-                        index++;
+                        var ccSuccess = await webScrapingService.AddCreditCardAsync(token);
+                        Console.WriteLine(ccSuccess ? "Credit card added successfully." : "Failed to add credit card.");
 
-                        if (index % 13 == 0)
-                        {
-                            var ccSuccess = await webScrapingService.AddCreditCardAsync(token);
-                            if (ccSuccess)
-                            {
-                                Console.WriteLine("Credit card added successfully.");
-                            }
-                            else
-                            {
-                                Console.WriteLine("Failed to add credit card.");
-                            }
+                        var addShopCart = await webScrapingService.AddShopCartAsync(token);
+                        Console.WriteLine(addShopCart ? "Product added to shopping cart successfully." : "Failed to add product to the shopping cart.");
 
-                        }
                     }
                 }
             }
@@ -78,9 +69,10 @@ namespace WebScrapingAppWithHttpClientFactory
     public interface IWebScrapingService
     {
         Task<string> GetSecurityTokenAsync();
-        Task<bool> LoginAsync(string securityToken,string username);
+        Task<bool> LoginAsync(string securityToken, string username);
         Task<bool> AddAddressAsync(string securityToken);
         Task<bool> AddCreditCardAsync(string securityToken);
+        Task<bool> AddShopCartAsync(string securityToken);
     }
 
     public class WebScrapingService : IWebScrapingService
@@ -166,7 +158,21 @@ namespace WebScrapingAppWithHttpClientFactory
             return response.IsSuccessStatusCode;
         }
 
+        public async Task<bool> AddShopCartAsync(string securityToken)
+        {
+            // Setup the form data to simulate the AddShopCart request
+            var formData = new MultipartFormDataContent
+            {
+                { new StringContent(GenerateRandomString(3, "0123456789")), "products_id" },
+                { new StringContent(securityToken), "securityToken" },
+                { new StringContent(GenerateRandomString(5, "123456789")), "cart_quantity" }
+            };
 
+            // Perform the POST request to add the product to the shopping cart
+            var url = "https://www.legocolombia.com.co/products/otros-lego-girasoles-edades-8-40524-artículo-191-piezas-ife102568-p-456.html?action=add_product";
+            HttpResponseMessage response = await _httpClient.PostAsync(url, formData);
+            return response.IsSuccessStatusCode;
+        }
 
         private string GenerateRandomString(int length, string allowedChars)
         {
