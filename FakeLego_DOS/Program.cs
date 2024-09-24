@@ -83,6 +83,7 @@ namespace WebScrapingAppWithHttpClientFactory
 
         public WebScrapingService(HttpClient httpClient)
         {
+            
             _httpClient = httpClient;
         }
 
